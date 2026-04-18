@@ -204,7 +204,6 @@ int index_load(Index *index)
     return 0;
 }
 
-
 // Save the index to .pes/index atomically.
 //
 // HINTS - Useful functions and syscalls:
@@ -215,12 +214,71 @@ int index_load(Index *index)
 //   - rename                           : atomically moving the temp file over the old index
 //
 // Returns 0 on success, -1 on error.
+
+// Helper for qsort
+static int compare_entries_by_path(const void *a, const void *b)
+{
+    return strcmp(((const IndexEntry *)a)->path, ((const IndexEntry *)b)->path);
+}
+
 int index_save(const Index *index)
 {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    // Write to temporary file
+    char tmp_path[520];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", INDEX_FILE);
+
+    FILE *f = fopen(tmp_path, "w");
+    if (!f)
+        return -1;
+
+    // Create array of pointers for sorting without copying the whole structure
+    IndexEntry *sorted_ptrs[MAX_INDEX_ENTRIES];
+    for (int i = 0; i < index->count; i++)
+    {
+        sorted_ptrs[i] = (IndexEntry *)&index->entries[i];
+    }
+
+    // Sort pointers
+    for (int i = 0; i < index->count - 1; i++)
+    {
+        for (int j = i + 1; j < index->count; j++)
+        {
+            if (strcmp(sorted_ptrs[i]->path, sorted_ptrs[j]->path) > 0)
+            {
+                IndexEntry *tmp = sorted_ptrs[i];
+                sorted_ptrs[i] = sorted_ptrs[j];
+                sorted_ptrs[j] = tmp;
+            }
+        }
+    }
+
+    for (int i = 0; i < index->count; i++)
+    {
+        const IndexEntry *entry = sorted_ptrs[i];
+        char hash_hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&entry->hash, hash_hex);
+
+        fprintf(f, "%o %s %lu %u %s\n",
+                entry->mode,
+                hash_hex,
+                entry->mtime_sec,
+                entry->size,
+                entry->path);
+    }
+
+    // Flush and sync
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+
+    // Atomic rename
+    if (rename(tmp_path, INDEX_FILE) != 0)
+    {
+        unlink(tmp_path);
+        return -1;
+    }
+
+    return 0;
 }
 
 // Stage a file for the next commit.
