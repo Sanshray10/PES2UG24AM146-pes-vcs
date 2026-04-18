@@ -137,14 +137,22 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out)
 //
 // declarations for later
 extern int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
-// We are doing Phase 3 first, this will be implemented after index.c
-//only tree_serialize, tree_parse will be tested for now
-//
+extern int index_load(Index *index);
+
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out)
 {
-    // will be implemented after index.c is done.
-    (void)id_out;
-    fprintf(stderr, "tree_from_index: not yet implemented (requires index.c)\n");
-    return -1;
+    Index index;
+    if (index_load(&index) != 0)
+    {
+        return -1;
+    }
+
+    if (index.count == 0)
+    {
+        fprintf(stderr, "error: no files staged\n");
+        return -1;
+    }
+
+    return build_tree_recursive(index.entries, index.count, "", id_out);
 }
